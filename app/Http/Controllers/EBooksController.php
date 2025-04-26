@@ -3,50 +3,38 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Note;
+use App\Models\EBook;
 use App\Models\Course;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Cache;
 
-class NotesController extends Controller
+class EBooksController extends Controller
 {
-    //
-    public function getNotes(Request $request)
+    public function getEBooks(Request $request)
     {
         try {
             // Get query parameters
             $courseCode = $request->query('course_code');
             $semester = $request->query('semester');
             
-            // Create a cache key based on query parameters
-            $cacheKey = "notes_" . ($courseCode ?? 'all') . "_" . ($semester ?? 'all');
+            // Start query builder
+            $query = EBook::query();
             
-            // Get data from cache or execute query (cache for 30 minutes)
-            $notes = Cache::remember($cacheKey, 1800, function () use ($courseCode, $semester) {
-                // Start query builder
-                $query = Note::query();
-                
-                // Apply filters if provided
-                if ($courseCode) {
-                    $query->where('course_code', $courseCode);
-                }
-                
-                if ($semester) {
-                    $query->where('semester', $semester);
-                }
-                
-                // Select only needed fields and optimize query
-                return $query->select([
-                    'id', 'title', 'description', 'subject', 'author',
-                    'file_path', 'course_code', 'semester', 'is_verified',
-                    'created_at', 'updated_at'
-                ])->get();
-            });
+            // Apply filters if provided
+            if ($courseCode) {
+                $query->where('course_code', $courseCode);
+            }
+            
+            if ($semester) {
+                $query->where('semester', $semester);
+            }
+            
+            // Get filtered results
+            $ebooks = $query->get();
             
             return response()->json([
                 'status' => true,
-                'message' => 'Notes retrieved successfully',
-                'data' => $notes
+                'message' => 'E-Books retrieved successfully',
+                'data' => $ebooks
             ], 200);
         } catch (\Throwable $th) {
             return response()->json([
@@ -57,7 +45,7 @@ class NotesController extends Controller
         }
     }
     
-    public function addNotes(Request $request)
+    public function addEBook(Request $request)
     {
         try {
             // Check if a file was uploaded
@@ -109,44 +97,42 @@ class NotesController extends Controller
             }
             
             // First, check if the course exists
-            $course = Course::where('course_code', $request->course_code)->first();
-            
-            if (!$course) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Course not found with the provided course code'
-                ], 404);
+            if ($request->has('course_code')) {
+                $course = Course::where('course_code', $request->course_code)->first();
+                
+                if (!$course) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Course not found with the provided course code'
+                    ], 404);
+                }
+                
+                // Check if semester is valid for this course
+                if ($request->has('semester') && 
+                    ($request->semester > $course->total_semesters || $request->semester < 1)) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Invalid semester. This course has ' . $course->total_semesters . ' semesters'
+                    ], 400);
+                }
             }
             
-            // Check if semester is valid for this course
-            if ($request->semester > $course->total_semesters || $request->semester < 1) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Invalid semester. This course has ' . $course->total_semesters . ' semesters'
-                ], 400);
-            }
-            
-            // Proceed with note validation
+            // Proceed with e-book validation
             $validatedData = $request->validate([
                 'title' => 'required|string|max:255',
-                'description' => 'required|string',
-                'subject' => 'required|string|max:255',
+                'description' => 'nullable|string',
                 'author' => 'required|string|max:255',
-                'file_path' => 'required|string|max:255',
-                'course_code' => 'required|string|exists:courses,course_code',
-                'semester' => 'required|integer|min:1',
-                'is_verified' => 'boolean',
+                'file_path' => 'required|string',
+                'course_code' => 'nullable|string|exists:courses,course_code',
+                'semester' => 'nullable|integer|min:1',
             ]);
             
-            $note = Note::create($validatedData);
-
-            // Clear cache for this course and semester
-            $this->clearNoteCache($note->course_code, $note->semester);
+            $ebook = EBook::create($validatedData);
 
             return response()->json([
                 'status' => true,
-                'message' => 'Note added successfully',
-                'data' => $note
+                'message' => 'E-Book added successfully',
+                'data' => $ebook
             ], 201);
         } catch (\Throwable $th) {
             return response()->json([
@@ -157,21 +143,17 @@ class NotesController extends Controller
         }
     }
     
-    public function updateNotes(Request $request, $id)
+    public function updateEBook(Request $request, $id)
     {
         try {
-            // Find the note
-            $note = Note::find($id);
-            if (!$note) {
+            // Find the e-book
+            $ebook = EBook::find($id);
+            if (!$ebook) {
                 return response()->json([
                     'status' => false,
-                    'message' => 'Note not found'
+                    'message' => 'E-Book not found'
                 ], 404);
             }
-            
-            // Store original course code and semester for cache clearing
-            $originalCourseCode = $note->course_code;
-            $originalSemester = $note->semester;
             
             // Check if a file was uploaded
             if ($request->hasFile('file')) {
@@ -215,21 +197,33 @@ class NotesController extends Controller
                 $request->merge(['file_path' => $responseData['url']]);
             }
             
-            $note->update($request->all());
-            
-            // Clear cache for both original and new course/semester combinations
-            $this->clearNoteCache($originalCourseCode, $originalSemester);
-            if ($request->has('course_code') || $request->has('semester')) {
-                $this->clearNoteCache($note->course_code, $note->semester);
+            // If course code is being updated, validate it
+            if ($request->has('course_code') && $request->course_code != $ebook->course_code) {
+                $course = Course::where('course_code', $request->course_code)->first();
+                
+                if (!$course) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Course not found with the provided course code'
+                    ], 404);
+                }
+                
+                // Check if semester is valid for this course
+                if ($request->has('semester') && 
+                    ($request->semester > $course->total_semesters || $request->semester < 1)) {
+                    return response()->json([
+                        'status' => false,
+                        'message' => 'Invalid semester. This course has ' . $course->total_semesters . ' semesters'
+                    ], 400);
+                }
             }
             
-            // Clear single note cache
-            Cache::forget("note_{$id}");
+            $ebook->update($request->all());
             
             return response()->json([
                 'status' => true,
-                'message' => 'Note updated successfully',
-                'data' => $note
+                'message' => 'E-Book updated successfully',
+                'data' => $ebook
             ], 200);
         } catch (\Throwable $th) {
             return response()->json([
@@ -240,31 +234,20 @@ class NotesController extends Controller
         }
     }
     
-    public function deleteNotes($id)
+    public function deleteEBook($id)
     {
         try {
-            //code...
-            $note = Note::find($id);
-            if (!$note) {
+            $ebook = EBook::find($id);
+            if (!$ebook) {
                 return response()->json([
                     'status' => false,
-                    'message' => 'Note not found'
+                    'message' => 'E-Book not found'
                 ], 404);
             }
-            
-            // Store course/semester before deletion to clear cache after
-            $courseCode = $note->course_code;
-            $semester = $note->semester;
-            
-            $note->delete();
-            
-            // Clear relevant caches
-            $this->clearNoteCache($courseCode, $semester);
-            Cache::forget("note_{$id}");
-            
+            $ebook->delete();
             return response()->json([
                 'status' => true,
-                'message' => 'Note deleted successfully'
+                'message' => 'E-Book deleted successfully'
             ], 200);
         } catch (\Throwable $th) {
             return response()->json([
@@ -273,59 +256,5 @@ class NotesController extends Controller
                 'error' => $th->getMessage()
             ], 500);
         }
-    }
-    
-    /**
-     * Get a specific note by ID with caching
-     */
-    public function getNote($id)
-    {
-        try {
-            // Try to get from cache first (cache for 30 minutes)
-            $note = Cache::remember("note_{$id}", 1800, function () use ($id) {
-                return Note::find($id);
-            });
-            
-            if (!$note) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Note not found'
-                ], 404);
-            }
-            
-            return response()->json([
-                'status' => true,
-                'message' => 'Note retrieved successfully',
-                'data' => $note
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Server error',
-                'error' => $th->getMessage()
-            ], 500);
-        }
-    }
-    
-    /**
-     * Helper method to clear note cache
-     */
-    private function clearNoteCache($courseCode = null, $semester = null)
-    {
-        // Clear course-specific cache
-        if ($courseCode && $semester) {
-            Cache::forget("notes_{$courseCode}_{$semester}");
-        }
-        
-        if ($courseCode) {
-            Cache::forget("notes_{$courseCode}_all");
-        }
-        
-        if ($semester) {
-            Cache::forget("notes_all_{$semester}");
-        }
-        
-        // Clear general notes cache
-        Cache::forget("notes_all_all");
     }
 }

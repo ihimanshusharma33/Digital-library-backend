@@ -11,9 +11,14 @@ class Notification extends Model
 
     protected $fillable = [
         'title',
-        'message',
+        'description', // Renamed from 'message'
         'user_id',
+        'course_code',
+        'semester',
         'notification_type',
+        'attachment_url',
+        'attachment_name',
+        'attachment_type',
         'is_read',
         'read_at',
         'expires_at',
@@ -23,11 +28,17 @@ class Notification extends Model
         'is_read' => 'boolean',
         'read_at' => 'datetime',
         'expires_at' => 'datetime',
+        'semester' => 'integer',
     ];
 
     // Relationships
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function course()
+    {
+        return $this->belongsTo(Course::class, 'course_code', 'course_code');
     }
 }
