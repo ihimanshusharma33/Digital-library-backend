@@ -23,7 +23,12 @@ class User extends Authenticatable implements JWTSubject
         'email',
         'password',
         'role',
-        'e_library_id',
+        'library_id',
+        'phone_number',
+        'department',
+        'university_roll_number',
+        'course_code',
+        'email_verified_at',
     ];
 
     /**
@@ -67,5 +72,13 @@ class User extends Authenticatable implements JWTSubject
     public function getJWTCustomClaims()
     {
         return [];
+    }
+    
+    /**
+     * Get the course associated with the user.
+     */
+    public function course()
+    {
+        return $this->belongsTo(Course::class, 'course_code', 'course_code');
     }
 }

@@ -20,13 +20,23 @@ class JwtMiddleware
     public function handle(Request $request, Closure $next): Response
     {
         try {
-            // Check if token exists and validate it
-            $user = JWTAuth::parseToken()->authenticate();
-            
+            // Check if token exists
+            if (!$token = JWTAuth::getToken()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Authorization token not found',
+                    'error' => 'token_absent'
+                ], 401);
+            }
+
+            // Try to parse and authenticate token
+            $user = JWTAuth::authenticate($token);
+
             if (!$user) {
                 return response()->json([
                     'status' => false,
-                    'message' => 'User not found'
+                    'message' => 'User not found',
+                    'error' => 'user_not_found'
                 ], 404);
             }
         } catch (TokenExpiredException $e) {
@@ -44,8 +54,8 @@ class JwtMiddleware
         } catch (JWTException $e) {
             return response()->json([
                 'status' => false,
-                'message' => 'Token is required',
-                'error' => 'token_absent'
+                'message' => 'Token could not be parsed or is absent',
+                'error' => 'token_error'
             ], 401);
         } catch (\Exception $e) {
             return response()->json([
@@ -54,9 +64,11 @@ class JwtMiddleware
                 'error' => $e->getMessage()
             ], 500);
         }
-        
-        // Add user to request for easy access in controllers
+
+        // Add user to request for controller access
         $request->auth = $user;
+
         return $next($request);
     }
+
 }

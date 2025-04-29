@@ -17,12 +17,9 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->string('author');
             $table->string('file_path');
-            
-            // Course-related fields
             $table->string('course_code')->nullable();
             $table->foreign('course_code')->references('course_code')->on('courses')->onDelete('set null');
             $table->integer('semester')->nullable();
-            
             $table->boolean('is_verified')->default(false);
             $table->timestamps();
         });

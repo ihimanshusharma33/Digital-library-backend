@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Book;
 use App\Models\Course;
+use App\Models\IssuedBook; // Add this import to use the IssuedBook model
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
+use App\Models\User;
 
 class booksContoller extends Controller
 {
@@ -317,6 +319,284 @@ class booksContoller extends Controller
             ], 500);
         }
     }
+    
+    /**
+     * Check book availability by ISBN, ID, title, or author
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function checkAvailability(Request $request)
+    {
+        try {
+            $request->validate([
+                'type' => 'required|in:isbn,id,title,author',
+                'value' => 'required|string',
+            ]);
+            
+            $type = $request->type;
+            $value = $request->value;
+            
+            $query = Book::query();
+            
+            switch ($type) {
+                case 'isbn':
+                    $query->where('isbn', $value);
+                    break;
+                case 'id':
+                    $query->where('id', $value);
+                    break;
+                case 'title':
+                    $query->where('title', 'like', '%' . $value . '%');
+                    break;
+                case 'author':
+                    $query->where('author', 'like', '%' . $value . '%');
+                    break;
+            }
+            
+            // Get the books
+            $books = $query->get();
+            
+            if ($books->isEmpty()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No books found matching the criteria'
+                ], 404);
+            }
+            
+            // Check availability for each book
+            $booksWithAvailability = $books->map(function($book) {
+                // A book is available if it's not currently issued or if all issued copies are returned
+                $isAvailable = !IssuedBook::where('book_id', $book->id)
+                    ->where('is_returned', false)
+                    ->exists();
+                
+                $data = [
+                    'id' => $book->id,
+                    'title' => $book->title,
+                    'author' => $book->author,
+                    'isbn' => $book->isbn,
+                    'is_available' => $isAvailable,
+                ];
+                
+                // If book is available, include more details
+                if ($isAvailable) {
+                    $data = array_merge($data, [
+                        'publisher' => $book->publisher,
+                        'publication_year' => $book->publication_year,
+                        'edition' => $book->edition,
+                        'category' => $book->category,
+                        'description' => $book->description,
+                        // Add any other book attributes you want to include
+                    ]);
+                }
+                
+                return $data;
+            });
+            
+            return response()->json([
+                'status' => 'success',
+                'data' => $booksWithAvailability,
+                'message' => $booksWithAvailability->contains('is_available', true) 
+                    ? 'Books available for checkout' 
+                    : 'Sorry, no books are currently available for checkout'
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to check book availability',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Return a book that was previously issued
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function returnBook(Request $request)
+    {
+        try {
+            // Validate request
+            $request->validate([
+                'issued_book_id' => 'required|exists:issued_books,id',
+                'return_date' => 'required|date',
+                'remarks' => 'nullable|string'
+            ]);
+
+            // Find the issued book record
+            $issuedBook = IssuedBook::find($request->issued_book_id);
+            
+            if (!$issuedBook) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Issued book record not found'
+                ], 404);
+            }
+
+            // Check if book is already returned
+            if ($issuedBook->is_returned) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'This book has already been returned'
+                ], 400);
+            }
+
+            // Parse dates for fine calculation
+            $dueDate = \Carbon\Carbon::parse($issuedBook->due_date);
+            $returnDate = \Carbon\Carbon::parse($request->return_date);
+            
+            // Calculate fine if book is returned late (₹10 per day)
+            $fineAmount = 0;
+            if ($returnDate->gt($dueDate)) {
+                $daysLate = $returnDate->diffInDays($dueDate);
+                $fineAmount = $daysLate * 10; // ₹10 per day
+            }
+
+            // Update the issued book record
+            $issuedBook->update([
+                'return_date' => $request->return_date,
+                'is_returned' => true,
+                'fine_amount' => $fineAmount,
+                'remarks' => $request->remarks ?? $issuedBook->remarks
+            ]);
+
+            // Reload the relationships for response
+            $issuedBook->load(['book', 'user']);
+
+            return response()->json([
+                'status' => true,
+                'message' => $fineAmount > 0 
+                    ? "Book returned successfully. Fine amount: ₹{$fineAmount}" 
+                    : "Book returned successfully",
+                'data' => $issuedBook
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to process book return',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Get all books issued to a user with fine calculations
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getUserIssuedBooks(Request $request)
+    {
+        try {
+            // Validate request
+            $request->validate([
+                'library_id' => 'required|string',
+            ]);
+
+            // Find user by library ID
+            $user = User::where('library_id', $request->library_id)->first();
+            
+            if (!$user) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'User not found with the provided library ID'
+                ], 404);
+            }
+
+            // Get all books issued to this user
+            $issuedBooks = IssuedBook::with('book')
+                ->where('user_id', $user->id)
+                ->orderBy('is_returned', 'asc')
+                ->orderBy('due_date', 'asc')
+                ->get();
+            
+            if ($issuedBooks->isEmpty()) {
+                return response()->json([
+                    'status' => true,
+                    'message' => 'No books have been issued to this user',
+                    'data' => [
+                        'user' => [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'library_id' => $user->library_id,
+                            'email' => $user->email,
+                        ],
+                        'issued_books' => []
+                    ]
+                ], 200);
+            }
+
+            // Calculate current fines for unreturned books
+            $today = \Carbon\Carbon::now()->startOfDay();
+            $booksWithFines = $issuedBooks->map(function($issuedBook) use ($today) {
+                $fineAmount = $issuedBook->fine_amount;
+                $dueDate = \Carbon\Carbon::parse($issuedBook->due_date);
+                $status = 'On Time';
+                
+                // Only calculate fine for books not returned yet
+                if (!$issuedBook->is_returned) {
+                    if ($today->gt($dueDate)) {
+                        $daysLate = $today->diffInDays($dueDate);
+                        $fineAmount = $daysLate * 10; // ₹10 per day
+                        $status = 'Overdue';
+                    } else {
+                        $status = 'Issued';
+                    }
+                } else {
+                    $status = 'Returned';
+                    $returnDate = \Carbon\Carbon::parse($issuedBook->return_date);
+                    if ($returnDate->gt($dueDate)) {
+                        $status = 'Returned Late';
+                    }
+                }
+                
+                return [
+                    'id' => $issuedBook->id,
+                    'book_id' => $issuedBook->book_id,
+                    'book_title' => $issuedBook->book->title,
+                    'book_author' => $issuedBook->book->author,
+                    'book_isbn' => $issuedBook->book->isbn,
+                    'issue_date' => $issuedBook->issue_date,
+                    'due_date' => $issuedBook->due_date,
+                    'return_date' => $issuedBook->return_date,
+                    'is_returned' => $issuedBook->is_returned,
+                    'fine_amount' => $fineAmount,
+                    'status' => $status,
+                    'remarks' => $issuedBook->remarks,
+                ];
+            });
+
+            // Calculate total fine
+            $totalFine = $booksWithFines->sum('fine_amount');
+
+            return response()->json([
+                'status' => true,
+                'message' => 'Books issued to user retrieved successfully',
+                'data' => [
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'library_id' => $user->library_id,
+                        'email' => $user->email,
+                    ],
+                    'total_fine' => $totalFine,
+                    'issued_books' => $booksWithFines
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Failed to retrieve issued books',
+                'error' => $e->getMessage()
+            ], 500);
+    }
+}
     
     /**
      * Helper method to clear book cache

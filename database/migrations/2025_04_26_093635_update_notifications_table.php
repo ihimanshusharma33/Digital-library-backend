@@ -14,7 +14,6 @@ return new class extends Migration
         Schema::table('notifications', function (Blueprint $table) {
             // Rename message column to description to match frontend naming
             $table->renameColumn('message', 'description');
-            
             // Add new columns for course information
             $table->string('course_code')->nullable()->after('user_id');
             $table->integer('semester')->nullable()->after('course_code');
