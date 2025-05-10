@@ -25,12 +25,18 @@ Route::get('/oldquestion', [questionPaperContoller::class, 'getOldQuestion']); /
 Route::get('/ebooks', [EBooksController::class, 'getEBooks']); // Public e-books catalog
 Route::get('/notices', [NotificationController::class, 'index']); // Public notices
 
+// Password reset routes (public)
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+
 // Routes for any authenticated user
 Route::middleware('jwt.auth')->group(function () {
     // User profile and personal data
     Route::get('/user/{id}', [userController::class, 'getUserById'])->middleware('jwt.verify.self'); // Only see own or admin
     Route::get('libraryCard/{id}', [userController::class, 'getLibraryCard'])->middleware('jwt.verify.self');
     Route::get('/issued-books', [userController::class, 'getUserIssuedBooks']);
+    Route::get('/issued-booksbyId/{id}', [UserController::class, 'getUserIssuedBooksbyID']);
+
     
     // Notification routes
     Route::prefix('notices')->group(function () {

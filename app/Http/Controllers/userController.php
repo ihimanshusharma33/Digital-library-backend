@@ -229,21 +229,21 @@ class userController extends Controller
     private function generateUniqueELibraryId()
     {
         $isUnique = false;
-        $e_library_id = '';
+        $library_id = '';
 
         while (!$isUnique) {
             // Generate random 8-digit number
-            $e_library_id = str_pad(mt_rand(10000000, 99999999), 8, '0', STR_PAD_LEFT);
+            $library_id = str_pad(mt_rand(10000000, 99999999), 8, '0', STR_PAD_LEFT);
 
             // Check if it's unique
-            $exists = User::where('e_library_id', $e_library_id)->exists();
+            $exists = User::where('library_id', $library_id)->exists();
 
             if (!$exists) {
                 $isUnique = true;
             }
         }
 
-        return $e_library_id;
+        return $library_id;
     }
 
     /**
@@ -709,4 +709,109 @@ class userController extends Controller
             ], 500);
         }
     }
+
+    public function getUserIssuedBooksById($id){
+        
+    try {
+        $varOcg = 'getUserIssuedBooksById';
+        Log::info("[$varOcg] Fetching issued books for user ID: $id");
+
+        $user = User::find($id);
+
+        if (!$user) {
+            return response()->json([
+                'status' => false,
+                'message' => 'User not found with the provided ID'
+            ], 404);
+        }
+
+        $issuedBooks = IssuedBook::with('book')
+            ->where('user_id', $user->id)
+            ->orderBy('is_returned', 'asc')
+            ->orderBy('due_date', 'asc')
+            ->get();
+
+        if ($issuedBooks->isEmpty()) {
+            return response()->json([
+                'status' => true,
+                'message' => 'No books have been issued to this user',
+                'data' => [
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'library_id' => $user->library_id,
+                        'email' => $user->email,
+                    ],
+                    'issued_books' => []
+                ]
+            ], 200);
+        }
+
+        $today = \Carbon\Carbon::now()->startOfDay();
+
+        $booksWithFines = $issuedBooks->map(function ($issuedBook) use ($today) {
+            $fineAmount = $issuedBook->fine_amount ?? 0;
+            $dueDate = \Carbon\Carbon::parse($issuedBook->due_date);
+            $status = 'On Time';
+
+            if (!$issuedBook->is_returned) {
+                if ($today->gt($dueDate)) {
+                    $daysLate = $today->diffInDays($dueDate);
+                    $fineAmount = $daysLate * 10;
+                    $status = 'Overdue';
+                } else {
+                    $status = 'Issued';
+                }
+            } else {
+                $status = 'Returned';
+                if ($issuedBook->return_date) {
+                    $returnDate = \Carbon\Carbon::parse($issuedBook->return_date);
+                    if ($returnDate->gt($dueDate)) {
+                        $status = 'Returned Late';
+                    }
+                }
+            }
+
+            return [
+                'id' => $issuedBook->id,
+                'book_id' => $issuedBook->book_id,
+                'book_title' => $issuedBook->book->title ?? 'Unknown Title',
+                'book_author' => $issuedBook->book->author ?? 'Unknown Author',
+                'book_isbn' => $issuedBook->book->isbn ?? 'No ISBN',
+                'issue_date' => $issuedBook->issue_date,
+                'due_date' => $issuedBook->due_date,
+                'return_date' => $issuedBook->return_date,
+                'is_returned' => $issuedBook->is_returned,
+                'fine_amount' => $fineAmount,
+                'status' => $status,
+                'remarks' => $issuedBook->remarks,
+            ];
+        });
+
+        $totalFine = $booksWithFines->sum('fine_amount');
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Books issued to user retrieved successfully',
+            'data' => [
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'library_id' => $user->library_id,
+                    'email' => $user->email,
+                ],
+                'total_fine' => $totalFine,
+                'issued_books' => $booksWithFines
+            ]
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to retrieve issued books',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
 }
