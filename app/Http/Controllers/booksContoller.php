@@ -18,32 +18,29 @@ class booksContoller extends Controller
     {
         try {
             // Get query parameters
-            $courseCode = $request->query('course_code');
+            $courseId = $request->query('course_id');
             $semester = $request->query('semester');
             
             // Create a cache key based on query parameters
-            $cacheKey = "books_" . ($courseCode ?? 'all') . "_" . ($semester ?? 'all');
+            $cacheKey = "books_" . ($courseId ?? 'all') . "_" . ($semester ?? 'all');
             
             // Get data from cache or execute query (cache for 30 minutes)
-            $books = Cache::remember($cacheKey, 1800, function () use ($courseCode, $semester) {
+            $books = Cache::remember($cacheKey, 1800, function () use ($courseId, $semester) {
                 // Start query builder
                 $query = Book::query();
                 
                 // Apply filters if provided
-                if ($courseCode) {
-                    $query->where('course_code', $courseCode);
+                if ($courseId) {
+                    $query->where('course_id', $courseId);
                 }
                 
-                if ($semester) {
-                    $query->where('semester', $semester);
-                }
                 
                 // Select only needed fields and optimize query
                 return $query->select([
-                    'id', 'title', 'author', 'isbn', 'description', 
+                    'book_id', 'title', 'author', 'isbn', 'description', 
                     'publisher', 'publication_year', 'quantity', 
                     'available_quantity', 'shelf_location', 'category', 
-                    'course_code', 'semester', 'is_available'
+                    'course_id', 'is_available'
                 ])->get();
             });
             
@@ -75,51 +72,23 @@ class booksContoller extends Controller
                     ], 400);
                 }
                 
-                // Create a new multipart form request to the file upload service
-                $response = Http::attach(
-                    'file', 
-                    file_get_contents($file->getRealPath()),
-                    $file->getClientOriginalName()
-                )->post('https://file-upload-eaky.onrender.com/upload');
-                
-                // Check if the upload was successful
-                if (!$response->successful()) {
-                    return response()->json([
-                        'status' => false,
-                        'message' => 'Failed to upload file to server',
-                        'error' => $response->body()
-                    ], 500);
-                }
-                
-                // Get the file URL from the response
-                $responseData = $response->json();
-                if (!isset($responseData['url'])) {
-                    return response()->json([
-                        'status' => false,
-                        'message' => 'Invalid response from file server',
-                        'error' => $responseData
-                    ], 500);
-                }
-                
-                // Set the file URL in the request data
-                $request->merge(['file_path' => $responseData['url']]);
             }
 
-            // Log the incoming course_code for debugging
-            \Log::info('Received course_code: ' . $request->course_code);
+            // Log the incoming course_id for debugging
+            \Log::info('Received course_id: ' . $request->course_id);
             
             // First, check if the course exists - using trim to remove any whitespace
-            $courseCode = trim($request->course_code);
-            $course = Course::where('course_code', $courseCode)->first();
+            $courseId = trim($request->course_id);
+            $course = Course::where('course_id', $courseId)->first();
             
             // If not found with exact match, try case-insensitive search
             if (!$course) {
-                $course = Course::whereRaw('LOWER(course_code) = ?', [strtolower($courseCode)])->first();
+                $course = Course::whereRaw('LOWER(course_id) = ?', [strtolower($courseId)])->first();
             }
             
             if (!$course) {
                 // Log available courses for debugging
-                $availableCourses = Course::pluck('course_code')->toArray();
+                $availableCourses = Course::pluck('course_id')->toArray();
                 \Log::info('Available courses: ' . implode(', ', $availableCourses));
                 
                 return response()->json([
@@ -128,13 +97,6 @@ class booksContoller extends Controller
                 ], 404);
             }
             
-            // Check if semester is valid for this course
-            if ($request->semester > $course->total_semesters || $request->semester < 1) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Invalid semester. This course has ' . $course->total_semesters . ' semesters'
-                ], 400);
-            }
             
             // Proceed with book validation
             $validatedData = $request->validate([
@@ -148,15 +110,14 @@ class booksContoller extends Controller
                 'available_quantity' => 'required|integer|min:0|lte:quantity',
                 'shelf_location' => 'nullable|string|max:50',
                 'category' => 'nullable|string|max:100',
-                'course_code' => 'required|string|exists:courses,course_code',
-                'semester' => 'required|integer|min:1',
+                'course_id' => 'required|string|exists:courses,course_id',
                 'is_available' => 'boolean',
             ]);
             
             $book = Book::create($validatedData);
             
             // Clear cache for this course and semester
-            $this->clearBookCache($book->course_code, $book->semester);
+            $this->clearBookCache($book->course_id, $book->semester);
             
             return response()->json([
                 'status' => true,
@@ -184,7 +145,7 @@ class booksContoller extends Controller
             }
             
             // Store original course code and semester for cache clearing
-            $originalCourseCode = $book->course_code;
+            $originalcourseId = $book->course_id;
             $originalSemester = $book->semester;
             
             // Check if a file was uploaded
@@ -232,9 +193,9 @@ class booksContoller extends Controller
             $book->update($request->all());
             
             // Clear cache for both original and new course/semester combinations
-            $this->clearBookCache($originalCourseCode, $originalSemester);
-            if ($request->has('course_code') || $request->has('semester')) {
-                $this->clearBookCache($book->course_code, $book->semester);
+            $this->clearBookCache($originalcourseId, $originalSemester);
+            if ($request->has('course_id') || $request->has('semester')) {
+                $this->clearBookCache($book->course_id, $book->semester);
             }
             
             // Clear the specific book's cache if it was cached individually
@@ -266,13 +227,13 @@ class booksContoller extends Controller
             }
             
             // Store course/semester before deletion to clear cache after
-            $courseCode = $book->course_code;
+            $courseId = $book->course_id;
             $semester = $book->semester;
             
             $book->delete();
             
             // Clear related caches
-            $this->clearBookCache($courseCode, $semester);
+            $this->clearBookCache($courseId, $semester);
             Cache::forget("book_{$id}");
             
             return response()->json([
@@ -601,15 +562,15 @@ class booksContoller extends Controller
     /**
      * Helper method to clear book cache
      */
-    private function clearBookCache($courseCode = null, $semester = null)
+    private function clearBookCache($courseId = null, $semester = null)
     {
         // Clear course-specific cache
-        if ($courseCode && $semester) {
-            Cache::forget("books_{$courseCode}_{$semester}");
+        if ($courseId && $semester) {
+            Cache::forget("books_{$courseId}_{$semester}");
         }
         
-        if ($courseCode) {
-            Cache::forget("books_{$courseCode}_all");
+        if ($courseId) {
+            Cache::forget("books_{$courseId}_all");
         }
         
         if ($semester) {
@@ -618,5 +579,43 @@ class booksContoller extends Controller
         
         // Clear general books cache
         Cache::forget("books_all_all");
+    }
+
+    public function getBookById($id)
+    {
+        try {
+            $book = Book::find($id); // This will now look for book_id = $id
+            
+            // Rest of your method
+        } catch (\Exception $e) {
+            // Error handling
+        }
+    }
+    
+    public function addBook(Request $request)
+    {
+        try {
+            // Validation...
+            
+            // If linking to a course, use the correct field
+            $courseId = null;
+            if ($request->has('course_code')) {
+                $course = Course::where('course_code', $request->course_code)->first();
+                if ($course) {
+                    $courseId = $course->course_id;
+                }
+            }
+            
+            $book = Book::create([
+                'title' => $request->title,
+                'author' => $request->author,
+                'course_id' => $courseId,
+                // other fields...
+            ]);
+            
+            // Rest of your method
+        } catch (\Exception $e) {
+            // Error handling
+        }
     }
 }

@@ -9,24 +9,25 @@ class EBook extends Model
 {
     use HasFactory;
 
+    protected $table = 'ebooks';
+    protected $primaryKey = 'ebook_id';
     protected $fillable = [
         'title',
         'description',
         'author',
         'file_path',
-        'course_code',
+        'course_id',
         'semester',
-        'is_verified',
+        'subject',
     ];
 
     protected $casts = [
         'semester' => 'integer',
-        'is_verified' => 'boolean',
     ];
 
     // Relationship with Course
     public function course()
     {
-        return $this->belongsTo(Course::class, 'course_code', 'course_code');
+        return $this->belongsTo(Course::class, 'course_id', 'course_id');
     }
 }

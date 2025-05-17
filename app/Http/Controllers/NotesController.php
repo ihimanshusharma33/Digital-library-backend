@@ -15,30 +15,29 @@ class NotesController extends Controller
     {
         try {
             // Get query parameters
-            $courseCode = $request->query('course_code');
+            $courseId = $request->query('course_id');
             $semester = $request->query('semester');
             
             // Create a cache key based on query parameters
-            $cacheKey = "notes_" . ($courseCode ?? 'all') . "_" . ($semester ?? 'all');
+            $cacheKey = "notes_" . ($courseId ?? 'all') . "_" . ($semester ?? 'all');
             
             // Get data from cache or execute query (cache for 30 minutes)
-            $notes = Cache::remember($cacheKey, 1800, function () use ($courseCode, $semester) {
+            $notes = Cache::remember($cacheKey, 1800, function () use ($courseId, $semester) {
                 // Start query builder
                 $query = Note::query();
                 
                 // Apply filters if provided
-                if ($courseCode) {
-                    $query->where('course_code', $courseCode);
+                if ($courseId) {
+                    $query->where('course_id', $courseId);
                 }
                 
                 if ($semester) {
                     $query->where('semester', $semester);
                 }
                 
-                // Select only needed fields and optimize query
                 return $query->select([
-                    'id', 'title', 'description', 'subject', 'author',
-                    'file_path', 'course_code', 'semester', 'is_verified',
+                    'note_id', 'title', 'description', 'subject', 'author',
+                    'file_path', 'course_id', 'semester',
                     'created_at', 'updated_at'
                 ])->get();
             });
@@ -109,7 +108,7 @@ class NotesController extends Controller
             }
             
             // First, check if the course exists
-            $course = Course::where('course_code', $request->course_code)->first();
+            $course = Course::where('course_id', $request->course_id)->first();
             
             if (!$course) {
                 return response()->json([
@@ -133,15 +132,14 @@ class NotesController extends Controller
                 'subject' => 'required|string|max:255',
                 'author' => 'required|string|max:255',
                 'file_path' => 'required|string|max:255',
-                'course_code' => 'required|string|exists:courses,course_code',
-                'semester' => 'required|integer|min:1',
-                'is_verified' => 'boolean',
+                'course_id' => 'required|string|exists:courses,course_id',
+                'semester' => 'required|integer|min:1'
             ]);
             
             $note = Note::create($validatedData);
 
             // Clear cache for this course and semester
-            $this->clearNoteCache($note->course_code, $note->semester);
+            $this->clearNoteCache($note->course_id, $note->semester);
 
             return response()->json([
                 'status' => true,
@@ -170,7 +168,7 @@ class NotesController extends Controller
             }
             
             // Store original course code and semester for cache clearing
-            $originalCourseCode = $note->course_code;
+            $originalcourseId = $note->course_id;
             $originalSemester = $note->semester;
             
             // Check if a file was uploaded
@@ -218,9 +216,9 @@ class NotesController extends Controller
             $note->update($request->all());
             
             // Clear cache for both original and new course/semester combinations
-            $this->clearNoteCache($originalCourseCode, $originalSemester);
-            if ($request->has('course_code') || $request->has('semester')) {
-                $this->clearNoteCache($note->course_code, $note->semester);
+            $this->clearNoteCache($originalcourseId, $originalSemester);
+            if ($request->has('course_id') || $request->has('semester')) {
+                $this->clearNoteCache($note->course_id, $note->semester);
             }
             
             // Clear single note cache
@@ -253,13 +251,13 @@ class NotesController extends Controller
             }
             
             // Store course/semester before deletion to clear cache after
-            $courseCode = $note->course_code;
+            $courseId = $note->course_id;
             $semester = $note->semester;
             
             $note->delete();
             
             // Clear relevant caches
-            $this->clearNoteCache($courseCode, $semester);
+            $this->clearNoteCache($courseId, $semester);
             Cache::forget("note_{$id}");
             
             return response()->json([
@@ -310,15 +308,15 @@ class NotesController extends Controller
     /**
      * Helper method to clear note cache
      */
-    private function clearNoteCache($courseCode = null, $semester = null)
+    private function clearNoteCache($courseId = null, $semester = null)
     {
         // Clear course-specific cache
-        if ($courseCode && $semester) {
-            Cache::forget("notes_{$courseCode}_{$semester}");
+        if ($courseId && $semester) {
+            Cache::forget("notes_{$courseId}_{$semester}");
         }
         
-        if ($courseCode) {
-            Cache::forget("notes_{$courseCode}_all");
+        if ($courseId) {
+            Cache::forget("notes_{$courseId}_all");
         }
         
         if ($semester) {

@@ -19,58 +19,12 @@ class AuthController extends Controller
      * @return \Illuminate\Http\JsonResponse
      */
 
-    public function signup(Request $request)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'name' => 'required|string|max:255',
-                'email' => 'required|string|email|max:255|unique:users',
-                'password' => 'required|string|min:6',
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'status' => false,
-                    'code' => 422,
-                    'message' => 'Validation failed.',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $user = User::create([
-                'name' => $request->name,
-                'email' => $request->email,
-                'password' => bcrypt($request->password),
-            ]);
-
-            // Generate JWT token
-            $token = JWTAuth::fromUser($user);
-
-            // Return response with token
-            return response()->json([
-                'status' => true,
-                'code' => 201,
-                'message' => 'User created successfully.',
-                'data' => [
-                    'token' => $token
-                ]
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => false,
-                'code' => 500,
-                'message' => 'Server error.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
     public function login(Request $request)
     {
         try {
             // Validate input
             $validator = Validator::make($request->all(), [
-                'email' => 'required|string|email',
+                'identifier' => 'required|string', // Can be email, library_id, or phone_number
                 'password' => 'required|string|min:6',
             ]);
 
@@ -83,10 +37,14 @@ class AuthController extends Controller
                 ], 422);
             }
 
-            $credentials = $request->only('email', 'password');
-
-            // Check if user exists
-            $user = User::where('email', $credentials['email'])->first();
+            $identifier = $request->identifier;
+            
+            // Find user by any of the three identifiers
+            $user = User::where('email', $identifier)
+                        ->orWhere('library_id', $identifier)
+                        ->orWhere('phone_number', $identifier)
+                        ->first();
+            
             if (!$user) {
                 return response()->json([
                     'status' => false,
@@ -95,7 +53,7 @@ class AuthController extends Controller
                 ], 404);
             }
 
-            // Optional: Check if user is active
+            // Check if user is active
             if (isset($user->is_active) && !$user->is_active) {
                 return response()->json([
                     'status' => false,
@@ -105,7 +63,10 @@ class AuthController extends Controller
             }
 
             // Attempt login
-            if (!$token = JWTAuth::attempt($credentials)) {
+            if (!$token = JWTAuth::attempt([
+                'email' => $user->email,
+                'password' => $request->password
+            ])) {
                 return response()->json([
                     'status' => false,
                     'code' => 401,
@@ -120,20 +81,14 @@ class AuthController extends Controller
                 'message' => 'Login successful.',
                 'token' => $token,
                 'user' => [
-                    'id' => $user->id,
+                    'user_id' => $user->user_id,
                     'name' => $user->name,
                     'email' => $user->email,
-                    'role' => $user->role
-                    // add more user fields if needed
+                    'role' => $user->role,
+                    'library_id' => $user->library_id,
+                    'phone_number' => $user->phone_number
                 ]
             ], 200);
-        } catch (JWTException $e) {
-            return response()->json([
-                'status' => false,
-                'code' => 500,
-                'message' => 'Could not create token.',
-                'error' => $e->getMessage()
-            ], 500);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => false,

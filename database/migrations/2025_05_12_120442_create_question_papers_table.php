@@ -12,18 +12,15 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('question_papers', function (Blueprint $table) {
-            $table->id();
+            $table->id('paper_id');
             $table->string('title');
             $table->string('subject');
             $table->year('year');
             $table->enum('exam_type', ['midterm', 'final', 'supplementary', 'other'])->default('other');
             $table->string('file_path')->nullable();
-            
-            // Course-related fields
-            $table->string('course_code')->nullable();
-            $table->foreign('course_code')->references('course_code')->on('courses')->onDelete('set null');
+            $table->unsignedBigInteger('course_id')->nullable();
+            $table->foreign('course_id')->references('course_id')->on('courses')->onDelete('set null');
             $table->integer('semester')->nullable();
-            
             $table->text('description')->nullable();
             $table->timestamps();
         });

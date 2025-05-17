@@ -24,10 +24,12 @@ class DatabaseSeeder extends Seeder
         // Call our custom seeders
         $this->call([
             CourseSeeder::class,
+            UsersTableSeeder::class,
             BookSeeder::class,
             QuestionPaperSeeder::class,
             NoteSeeder::class,
             NotificationSeeder::class,
+            EbooksSeeder::class,
         ]);
     }
 }

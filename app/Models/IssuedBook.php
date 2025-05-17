@@ -9,6 +9,9 @@ class IssuedBook extends Model
 {
     use HasFactory;
 
+    protected $table = 'issued_books';
+    protected $primaryKey = 'issue_id';
+
     protected $fillable = [
         'book_id',
         'user_id',

@@ -12,20 +12,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('notes', function (Blueprint $table) {
-            $table->id();
+            $table->id('note_id');
             $table->string('title');
             $table->text('description')->nullable();
             $table->string('subject');
             $table->string('author')->nullable();
             $table->string('file_path')->nullable();
-            
-            // Course-related fields
-            $table->string('course_code')->nullable();
-            $table->foreign('course_code')->references('course_code')->on('courses')->onDelete('set null');
+            $table->unsignedBigInteger('course_id')->nullable();;
+            $table->foreign('course_id')->references('course_id')->on('courses')->onDelete('set null');
             $table->integer('semester')->nullable();
-            
-            $table->boolean('is_verified')->default(false);
             $table->timestamps();
+
+            
         });
     }
 

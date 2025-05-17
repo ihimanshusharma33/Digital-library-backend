@@ -12,11 +12,11 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('issued_books', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('book_id');
-            $table->foreign('book_id')->references('id')->on('books')->onDelete('cascade');
-            $table->unsignedBigInteger('user_id'); // Student ID who has issued the book
-            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->id('issue_id');
+            $table->unsignedBigInteger('book_id')->nullable();;
+            $table->foreign('book_id')->references('book_id')->on('books')->onDelete('cascade');
+            $table->unsignedBigInteger('user_id')->nullable(); // Student ID who has issued the book
+            $table->foreign('user_id')->references('user_id')->on('users')->onDelete('cascade');
             $table->date('issue_date');
             $table->date('due_date');
             $table->date('return_date')->nullable();
@@ -33,6 +33,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('issued_books');
+        Schema::dropIfExists('issued_books_');
     }
 };

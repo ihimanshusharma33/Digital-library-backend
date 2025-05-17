@@ -9,6 +9,9 @@ class Book extends Model
 {
     use HasFactory;
 
+    // Important: Specify the primary key
+    protected $primaryKey = 'book_id';
+
     protected $fillable = [
         'title',
         'author',
@@ -20,8 +23,7 @@ class Book extends Model
         'available_quantity',
         'shelf_location',
         'category',
-        'course_code',
-        'semester',
+        'course_id',
         'is_available',
     ];
 
@@ -29,18 +31,17 @@ class Book extends Model
         'publication_year' => 'integer',
         'quantity' => 'integer',
         'available_quantity' => 'integer',
-        'semester' => 'integer',
         'is_available' => 'boolean',
     ];
 
     // Relationships
     public function course()
     {
-        return $this->belongsTo(Course::class, 'course_code', 'course_code');
+        return $this->belongsTo(Course::class, 'course_id', 'course_id');
     }
 
     public function issuedBooks()
     {
-        return $this->hasMany(IssuedBook::class);
+        return $this->hasMany(IssuedBook::class, 'book_id', 'book_id');
     }
 }

@@ -19,7 +19,7 @@ class courseContoller extends Controller
             // Try to get data from cache first (cache for 1 hour as course data changes less frequently)
             $courses = Cache::remember($cacheKey, 3600, function () {
                 return Course::select([
-                    'id', 'course_code', 'course_name', 'description', 
+                    'course_id', 'course_code', 'course_name', 'description', 
                     'total_semesters', 'department', 'is_active'
                 ])->get();
             });
@@ -37,39 +37,6 @@ class courseContoller extends Controller
             ], 500);
         }
     }
-
-    /**
-     * Get a specific course by code with caching
-     */
-    public function getCourseByCode($courseCode)
-    {
-        try {
-            // Try to get from cache first
-            $course = Cache::remember("course_{$courseCode}", 3600, function () use ($courseCode) {
-                return Course::where('course_code', $courseCode)->first();
-            });
-            
-            if (!$course) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'Course not found'
-                ], 404);
-            }
-            
-            return response()->json([
-                'status' => true,
-                'message' => 'Course retrieved successfully',
-                'data' => $course
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Server error',
-                'error' => $th->getMessage()
-            ], 500);
-        }
-    }
-
     public function addCourse(Request $request){
 
         try {
@@ -132,14 +99,15 @@ class courseContoller extends Controller
             }
             
             // Store original course code for cache clearing
-            $originalCourseCode = $course->course_code;
+            $originalcourseId = $course->course_id;
             
             $validator = Validator::make($request->all(), [
                 'course_code' => [
                     'sometimes', 
                     'string', 
                     'max:50',
-                    Rule::unique('courses')->ignore($id),
+                    // Specify the course_id column explicitly
+                    Rule::unique('courses')->ignore($id, 'course_id'),
                 ],
                 'course_name' => 'sometimes|string|max:255',
                 'description' => 'sometimes|string|max:1000',
@@ -160,8 +128,8 @@ class courseContoller extends Controller
             
             // Clear all relevant caches
             Cache::forget('all_courses');
-            Cache::forget("course_{$originalCourseCode}");
-            if ($request->has('course_code') && $originalCourseCode !== $request->course_code) {
+            Cache::forget("course_{$originalcourseId}");
+            if ($request->has('course_code') && $originalcourseId !== $request->course_code) {
                 Cache::forget("course_{$request->course_code}");
             }
             
@@ -195,13 +163,13 @@ class courseContoller extends Controller
             }
             
             // Store course code before deletion for cache clearing
-            $courseCode = $course->course_code;
+            $courseId = $course->course_code;
             
             $course->delete();
             
             // Clear caches
             Cache::forget('all_courses');
-            Cache::forget("course_{$courseCode}");
+            Cache::forget("course_{$courseId}");
             
             return response()->json([
                 'status' => true,
@@ -212,6 +180,35 @@ class courseContoller extends Controller
                 'status' => false,
                 'message' => 'Server error',
                 'error' => $th->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getCourseById($id)
+    {
+        try {
+            $course = Course::find($id); 
+            
+            if (!$course) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Course not found'
+                ], 404);
+            }
+            
+            return response()->json([
+                'status' => true,
+                'message' => 'Course retrieved successfully',
+                'data' => $course
+            ], 200); // 200 = OK
+
+            // Rest of your method
+        } catch (\Exception $e) {
+            // Error handling
+            return response()->json([
+                'status' => false,
+                'message' => 'Server error',
+                'error' => $e->getMessage()
             ], 500);
         }
     }

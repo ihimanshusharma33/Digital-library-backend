@@ -15,21 +15,21 @@ class questionPaperContoller extends Controller
     {
         try {
             // Get query parameters
-            $courseCode = $request->query('course_code');
+            $courseId = $request->query('course_id');
             $semester = $request->query('semester');
             $examType = $request->query('exam_type');
             
             // Create a cache key based on query parameters
-            $cacheKey = "qp_" . ($courseCode ?? 'all') . "_" . ($semester ?? 'all') . "_" . ($examType ?? 'all');
+            $cacheKey = "qp_" . ($courseId ?? 'all') . "_" . ($semester ?? 'all') . "_" . ($examType ?? 'all');
             
             // Get data from cache or execute query (cache for 30 minutes)
-            $questionPapers = Cache::remember($cacheKey, 1800, function () use ($courseCode, $semester, $examType) {
+            $questionPapers = Cache::remember($cacheKey, 1800, function () use ($courseId, $semester, $examType) {
                 // Start query builder
                 $query = QuestionPaper::query();
                 
                 // Apply filters if provided
-                if ($courseCode) {
-                    $query->where('course_code', $courseCode);
+                if ($courseId) {
+                    $query->where('course_id', $courseId);
                 }
                 
                 if ($semester) {
@@ -43,7 +43,7 @@ class questionPaperContoller extends Controller
                 // Select only needed fields for optimization
                 return $query->select([
                     'id', 'title', 'subject', 'exam_type', 'year',
-                    'file_path', 'course_code', 'semester', 'description', 
+                    'file_path', 'course_id', 'semester', 'description', 
                     'created_at', 'updated_at'
                 ])->get();
             });
@@ -76,7 +76,7 @@ class questionPaperContoller extends Controller
                 'title' => 'required|string|max:255',
                 'content' => 'required|string',
                 'exam_type' => 'required|string',
-                'course_code' => 'required|string|exists:courses,course_code',
+                'course_id' => 'required|string|exists:courses,course_id',
                 'semester' => 'required|integer|min:1',
                 'year' => 'required|integer',
                 'subject' => 'required|string|max:255',
@@ -132,7 +132,7 @@ class questionPaperContoller extends Controller
             }
 
             // First, check if the course exists
-            $course = Course::where('course_code', $request->course_code)->first();
+            $course = Course::where('course_id', $request->course_id)->first();
             
             if (!$course) {
                 return response()->json([
@@ -155,7 +155,7 @@ class questionPaperContoller extends Controller
             $questionPaper->content = $request->content;
             $questionPaper->file_path = $request->file_path;
             $questionPaper->exam_type = $request->exam_type;
-            $questionPaper->course_code = $request->course_code;
+            $questionPaper->course_id = $request->course_id;
             $questionPaper->semester = $request->semester;
             $questionPaper->year = $request->year;
             $questionPaper->subject = $request->subject;
@@ -165,7 +165,7 @@ class questionPaperContoller extends Controller
             $questionPaper->save();
 
             // Clear relevant cache
-            $this->clearQuestionPaperCache($questionPaper->course_code, $questionPaper->semester, $questionPaper->exam_type);
+            $this->clearQuestionPaperCache($questionPaper->course_id, $questionPaper->semester, $questionPaper->exam_type);
 
             return response()->json([
                 'status' => true,
@@ -233,7 +233,7 @@ class questionPaperContoller extends Controller
             }
             
             // First, check if the course exists
-            $course = Course::where('course_code', $request->course_code)->first();
+            $course = Course::where('course_id', $request->course_id)->first();
             
             if (!$course) {
                 return response()->json([
@@ -257,7 +257,7 @@ class questionPaperContoller extends Controller
                 'year' => 'required|integer',
                 'exam_type' => 'required|string',
                 'file_path' => 'required|string',
-                'course_code' => 'required|string|exists:courses,course_code',
+                'course_id' => 'required|string|exists:courses,course_id',
                 'semester' => 'required|integer|min:1',
                 'description' => 'nullable|string',
             ]);
@@ -265,7 +265,7 @@ class questionPaperContoller extends Controller
             $questionPaper = QuestionPaper::create($validatedData);
             
             // Clear relevant cache
-            $this->clearQuestionPaperCache($questionPaper->course_code, $questionPaper->semester, $questionPaper->exam_type);
+            $this->clearQuestionPaperCache($questionPaper->course_id, $questionPaper->semester, $questionPaper->exam_type);
 
             return response()->json([
                 'status' => true,
@@ -294,7 +294,7 @@ class questionPaperContoller extends Controller
             }
             
             // Store original values for cache clearing
-            $originalCourseCode = $questionPaper->course_code;
+            $originalcourseId = $questionPaper->course_id;
             $originalSemester = $questionPaper->semester;
             $originalExamType = $questionPaper->exam_type;
             
@@ -343,12 +343,12 @@ class questionPaperContoller extends Controller
             $questionPaper->update($request->all());
             
             // Clear cache for both original and new values
-            $this->clearQuestionPaperCache($originalCourseCode, $originalSemester, $originalExamType);
+            $this->clearQuestionPaperCache($originalcourseId, $originalSemester, $originalExamType);
             
             // If any of these fields were changed, clear the cache for the new values too
-            if ($request->has('course_code') || $request->has('semester') || $request->has('exam_type')) {
+            if ($request->has('course_id') || $request->has('semester') || $request->has('exam_type')) {
                 $this->clearQuestionPaperCache(
-                    $questionPaper->course_code, 
+                    $questionPaper->course_id, 
                     $questionPaper->semester, 
                     $questionPaper->exam_type
                 );
@@ -384,14 +384,14 @@ class questionPaperContoller extends Controller
             }
             
             // Store values for cache clearing before deletion
-            $courseCode = $questionPaper->course_code;
+            $courseId = $questionPaper->course_id;
             $semester = $questionPaper->semester;
             $examType = $questionPaper->exam_type;
             
             $questionPaper->delete();
             
             // Clear all relevant caches
-            $this->clearQuestionPaperCache($courseCode, $semester, $examType);
+            $this->clearQuestionPaperCache($courseId, $semester, $examType);
             Cache::forget("question_paper_{$id}");
             
             return response()->json([
@@ -439,28 +439,28 @@ class questionPaperContoller extends Controller
     /**
      * Helper method to clear question paper cache
      */
-    private function clearQuestionPaperCache($courseCode = null, $semester = null, $examType = null)
+    private function clearQuestionPaperCache($courseId = null, $semester = null, $examType = null)
     {
         // Clear course-specific cache
-        if ($courseCode && $semester && $examType) {
-            Cache::forget("qp_{$courseCode}_{$semester}_{$examType}");
+        if ($courseId && $semester && $examType) {
+            Cache::forget("qp_{$courseId}_{$semester}_{$examType}");
         }
         
         // Clear partial caches
-        if ($courseCode && $semester) {
-            Cache::forget("qp_{$courseCode}_{$semester}_all");
+        if ($courseId && $semester) {
+            Cache::forget("qp_{$courseId}_{$semester}_all");
         }
         
-        if ($courseCode && $examType) {
-            Cache::forget("qp_{$courseCode}_all_{$examType}");
+        if ($courseId && $examType) {
+            Cache::forget("qp_{$courseId}_all_{$examType}");
         }
         
         if ($semester && $examType) {
             Cache::forget("qp_all_{$semester}_{$examType}");
         }
         
-        if ($courseCode) {
-            Cache::forget("qp_{$courseCode}_all_all");
+        if ($courseId) {
+            Cache::forget("qp_{$courseId}_all_all");
         }
         
         if ($semester) {

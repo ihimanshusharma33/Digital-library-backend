@@ -20,7 +20,7 @@ class ResourceController extends Controller
         try {
             // Get query parameters
             $resourceType = $request->query('type'); // 'ebooks', 'notes', 'question_papers'
-            $courseCode = $request->query('course_code');
+            $courseId = $request->query('course_id');
             $semester = $request->query('semester');
 
             $results = [];
@@ -29,13 +29,13 @@ class ResourceController extends Controller
             if ($resourceType) {
                 switch (strtolower($resourceType)) {
                     case 'ebooks':
-                        $results['ebooks'] = $this->getFilteredEbooks($courseCode, $semester);
+                        $results['ebooks'] = $this->getFilteredEbooks($courseId, $semester);
                         break;
                     case 'notes':
-                        $results['notes'] = $this->getFilteredNotes($courseCode, $semester);
+                        $results['notes'] = $this->getFilteredNotes($courseId, $semester);
                         break;
                     case 'question_papers':
-                        $results['question_papers'] = $this->getFilteredQuestionPapers($courseCode, $semester);
+                        $results['question_papers'] = $this->getFilteredQuestionPapers($courseId, $semester);
                         break;
                     default:
                         return response()->json([
@@ -46,9 +46,9 @@ class ResourceController extends Controller
             } else {
                 // If no specific type is requested, fetch all resource types
                 $results = [
-                    'ebooks' => $this->getFilteredEbooks($courseCode, $semester),
-                    'notes' => $this->getFilteredNotes($courseCode, $semester),
-                    'question_papers' => $this->getFilteredQuestionPapers($courseCode, $semester)
+                    'ebooks' => $this->getFilteredEbooks($courseId, $semester),
+                    'notes' => $this->getFilteredNotes($courseId, $semester),
+                    'question_papers' => $this->getFilteredQuestionPapers($courseId, $semester)
                 ];
             }
 
@@ -69,16 +69,16 @@ class ResourceController extends Controller
     /**
      * Get filtered e-books based on course code and semester
      *
-     * @param string|null $courseCode
+     * @param string|null $courseId
      * @param int|null $semester
      * @return \Illuminate\Database\Eloquent\Collection
      */
-    private function getFilteredEbooks($courseCode, $semester)
+    private function getFilteredEbooks($courseId, $semester)
     {
         $query = EBook::query();
 
-        if ($courseCode) {
-            $query->where('course_code', $courseCode);
+        if ($courseId) {
+            $query->where('course_id', $courseId);
         }
 
         if ($semester) {
@@ -91,16 +91,16 @@ class ResourceController extends Controller
     /**
      * Get filtered notes based on course code and semester
      *
-     * @param string|null $courseCode
+     * @param string|null $courseId
      * @param int|null $semester
      * @return \Illuminate\Database\Eloquent\Collection
      */
-    private function getFilteredNotes($courseCode, $semester)
+    private function getFilteredNotes($courseId, $semester)
     {
         $query = Note::query();
 
-        if ($courseCode) {
-            $query->where('course_code', $courseCode);
+        if ($courseId) {
+            $query->where('course_id', $courseId);
         }
 
         if ($semester) {
@@ -113,16 +113,16 @@ class ResourceController extends Controller
     /**
      * Get filtered question papers based on course code and semester
      *
-     * @param string|null $courseCode
+     * @param string|null $courseId
      * @param int|null $semester
      * @return \Illuminate\Database\Eloquent\Collection
      */
-    private function getFilteredQuestionPapers($courseCode, $semester)
+    private function getFilteredQuestionPapers($courseId, $semester)
     {
         $query = QuestionPaper::query();
 
-        if ($courseCode) {
-            $query->where('course_code', $courseCode);
+        if ($courseId) {
+            $query->where('course_id', $courseId);
         }
 
         if ($semester) {

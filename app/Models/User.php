@@ -6,12 +6,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, HasApiTokens;
+
+    // Important: Specify the primary key
+    protected $primaryKey = 'user_id';
 
     /**
      * The attributes that are mass assignable.
@@ -25,10 +29,8 @@ class User extends Authenticatable implements JWTSubject
         'role',
         'library_id',
         'phone_number',
-        'department',
         'university_roll_number',
-        'course_code',
-        'email_verified_at',
+        'course_id',
     ];
 
     /**
@@ -79,6 +81,6 @@ class User extends Authenticatable implements JWTSubject
      */
     public function course()
     {
-        return $this->belongsTo(Course::class, 'course_code', 'course_code');
+        return $this->belongsTo(Course::class, 'course_id', 'course_id');
     }
 }

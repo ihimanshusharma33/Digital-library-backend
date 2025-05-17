@@ -9,24 +9,22 @@ class Notification extends Model
 {
     use HasFactory;
 
+    protected $table = 'notifications';
+    protected $primaryKey = 'notification_id';
     protected $fillable = [
         'title',
-        'description', // Renamed from 'message'
+        'description',
         'user_id',
-        'course_code',
+        'course_id',
         'semester',
         'notification_type',
         'attachment_url',
         'attachment_name',
         'attachment_type',
-        'is_read',
-        'read_at',
         'expires_at',
     ];
 
     protected $casts = [
-        'is_read' => 'boolean',
-        'read_at' => 'datetime',
         'expires_at' => 'datetime',
         'semester' => 'integer',
     ];

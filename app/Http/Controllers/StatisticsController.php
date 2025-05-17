@@ -21,7 +21,6 @@ class StatisticsController extends Controller
             $statistics = Cache::remember('system_statistics', 300, function () {
                 // Count users
                 $totalUsers = User::count();
-                $verifiedUsers = User::whereNotNull('email_verified_at')->count();
                 $studentUsers = User::where('role', 'student')->count();
                 
                 // Count resources by type
@@ -41,12 +40,10 @@ class StatisticsController extends Controller
                 
                 // Count notifications/notices
                 $totalNotices = Notification::count();
-                $activeNotices = Notification::where('expires_at', '>', now())->count();
                 
                 return [
                     'users' => [
                         'total' => $totalUsers,
-                        'verified' => $verifiedUsers,
                         'students' => $studentUsers
                     ],
                     'resources' => [
@@ -64,7 +61,6 @@ class StatisticsController extends Controller
                     ],
                     'notices' => [
                         'total' => $totalNotices,
-                        'active' => $activeNotices
                     ]
                 ];
             });

@@ -26,9 +26,8 @@ class NotificationController extends Controller
         $notifications = Cache::remember($cacheKey, 300, function () {
             return Notification::orderBy('created_at', 'desc')
                 ->select([
-                    'id', 'title', 'description', 'user_id',
-                    'course_code', 'semester', 'notification_type',
-                    'attachment_url', 'is_read', 'read_at', 'expires_at', 'created_at'
+                    'notification_id', 'title', 'description', 'user_id', 'notification_type',
+                    'attachment_url', 'created_at'
                 ])
                 ->get();
         });
@@ -61,7 +60,7 @@ class NotificationController extends Controller
                 })
                 ->select([
                     'id', 'title', 'description', 'user_id',
-                    'course_code', 'semester', 'notification_type',
+                    'course_id', 'semester', 'notification_type',
                     'attachment_url', 'is_read', 'read_at', 'expires_at', 'created_at'
                 ])
                 ->orderBy('created_at', 'desc')
@@ -84,12 +83,12 @@ class NotificationController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'user_id' => 'nullable|exists:users,id',
-            'course_code' => 'nullable|string|max:50',
-            'semester' => 'nullable|integer|min:1',
+            'description' => 'nullable|string',
+            'user_id' => 'nullable|exists:users,user_id',
             'notification_type' => 'nullable|string|max:255',
-            'expires_at' => 'nullable|date',
+            'attachment_url' => 'nullable|string|max:255',
+            'attachment_name' => 'nullable|string|max:255',
+            'attachment_type' => 'nullable|string|max:50',
         ]);
 
         if ($validator->fails()) {
@@ -99,59 +98,24 @@ class NotificationController extends Controller
             ], 422);
         }
 
-        // Fill data from request
-        $data = $request->all();
-        
-        // Handle file upload if a file was provided
-        if ($request->hasFile('attachment')) {
-            $file = $request->file('attachment');
-            
-            // Validate the file
-            if (!$file->isValid()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid file upload'
-                ], 400);
-            }
-            
-            // Create a new multipart form request to the file upload service
-            $response = Http::attach(
-                'file', 
-                file_get_contents($file->getRealPath()),
-                $file->getClientOriginalName()
-            )->post('https://file-upload-eaky.onrender.com/upload');
-            
-            // Check if the upload was successful
-            if (!$response->successful()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to upload file to server',
-                    'error' => $response->body()
-                ], 500);
-            }
-            
-            // Get the file URL from the response
-            $responseData = $response->json();
-            if (!isset($responseData['url'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid response from file server',
-                    'error' => $responseData
-                ], 500);
-            }
-            
-            // Set the attachment URL in the data array
-            $data['attachment_url'] = $responseData['url'];
-        }
+        $data = $request->only([
+            'title',
+            'description',
+            'user_id',
+            'notification_type',
+            'attachment_url',
+            'attachment_name',
+            'attachment_type',
+        ]);
 
         $notification = Notification::create($data);
 
-        // Clear relevant caches when creating a new notification
-        Cache::forget("notifications_simple_list");
+        // Clear relevant caches
+        \Cache::forget("notifications_simple_list");
         if ($notification->user_id) {
-            Cache::forget("user_{$notification->user_id}_notifications_page_1");
+            \Cache::forget("user_{$notification->user_id}_notifications_page_1");
         } else {
-            Cache::flush(); // Clear all cache for general notifications
+            \Cache::flush();
         }
 
         return response()->json([
@@ -169,25 +133,15 @@ class NotificationController extends Controller
      */
     public function show($id)
     {
-        // Try to get from cache first
-        $notification = Cache::remember("notification_{$id}", 300, function () use ($id) {
-            return Notification::select([
-                'id', 'title', 'description', 'user_id', 
-                'course_code', 'semester', 'notification_type',
-                'attachment_url', 'is_read', 'read_at', 'expires_at', 'created_at'
-            ])
-            ->find($id);
-        });
-        
+        $notification = Notification::with('user')->find($id);
         if (!$notification) {
             return response()->json([
-                'success' => false,
+                'status' => false,
                 'message' => 'Notification not found'
             ], 404);
         }
-
         return response()->json([
-            'success' => true,
+            'status' => true,
             'data' => $notification
         ]);
     }
@@ -201,92 +155,45 @@ class NotificationController extends Controller
      */
     public function update(Request $request, $id)
     {
-        // Use findOrFail for more efficient query
-        $notification = Notification::findOrFail($id);
-        
+        $notification = Notification::find($id);
+        if (!$notification) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Notification not found'
+            ], 404);
+        }
+
         $validator = Validator::make($request->all(), [
-            'title' => 'nullable|string|max:255',
+            'title' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
-            'user_id' => 'nullable|exists:users,id',
-            'course_code' => 'nullable|string|max:50',
-            'semester' => 'nullable|integer|min:1',
-            'notification_type' => 'nullable|string|max:255',
-            'is_read' => 'nullable|boolean',
-            'read_at' => 'nullable|date',
-            'expires_at' => 'nullable|date',
+            'user_id' => 'nullable|exists:users,user_id',
+            'notification_type' => 'sometimes|required|string|max:50',
+            'attachment_url' => 'nullable|string|max:255',
+            'attachment_name' => 'nullable|string|max:255',
+            'attachment_type' => 'nullable|string|max:50',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
-                'success' => false,
+                'status' => false,
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        // Fill data from request
-        $data = $request->except(['attachment_name', 'attachment_type']);
-        
-        // Handle file upload if a file was provided
-        if ($request->hasFile('attachment')) {
-            $file = $request->file('attachment');
-            
-            // Validate the file
-            if (!$file->isValid()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid file upload'
-                ], 400);
-            }
-            
-            // Create a new multipart form request to the file upload service
-            $response = Http::attach(
-                'file', 
-                file_get_contents($file->getRealPath()),
-                $file->getClientOriginalName()
-            )->post('https://file-upload-eaky.onrender.com/upload');
-            
-            // Check if the upload was successful
-            if (!$response->successful()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Failed to upload file to server',
-                    'error' => $response->body()
-                ], 500);
-            }
-            
-            // Get the file URL from the response
-            $responseData = $response->json();
-            if (!isset($responseData['url'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid response from file server',
-                    'error' => $responseData
-                ], 500);
-            }
-            
-            // Set the attachment URL in the data array
-            $data['attachment_url'] = $responseData['url'];
-        }
-
-        $notification->update($data);
-        
-        // Clear relevant caches after update
-        Cache::forget("notification_{$id}");
-        Cache::forget("notifications_simple_list");
-        if ($notification->user_id) {
-            Cache::forget("user_{$notification->user_id}_notifications_page_1");
-        } else {
-            Cache::forget("notifications_page_1_perpage_15");
-        }
+        $notification->update($request->only([
+            'title',
+            'description',
+            'user_id',
+            'notification_type',
+            'attachment_url',
+            'attachment_name',
+            'attachment_type'
+        ]));
 
         return response()->json([
-            'success' => true,
+            'status' => true,
             'message' => 'Notification updated successfully',
-            'data' => $notification->only([
-                'id', 'title', 'description', 'user_id',
-                'course_code', 'semester', 'notification_type',
-                'attachment_url', 'is_read', 'read_at', 'expires_at', 'created_at'
-            ])
+            'data' => $notification
         ]);
     }
 
@@ -351,24 +258,16 @@ class NotificationController extends Controller
      */
     public function destroy($id)
     {
-        // Use findOrFail for more efficient query with proper error handling
-        $notification = Notification::findOrFail($id);
-        
-        // Store user_id before deleting for cache clearing
-        $userId = $notification->user_id;
-        
-        $notification->delete();
-        
-        // Clear relevant caches
-        Cache::forget("notification_{$id}");
-        if ($userId) {
-            Cache::forget("user_{$userId}_notifications_page_1");
-        } else {
-            Cache::forget("notifications_page_1_perpage_15");
+        $notification = Notification::find($id);
+        if (!$notification) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Notification not found'
+            ], 404);
         }
-
+        $notification->delete();
         return response()->json([
-            'success' => true,
+            'status' => true,
             'message' => 'Notification deleted successfully'
         ]);
     }

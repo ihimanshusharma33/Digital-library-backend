@@ -15,12 +15,31 @@ class userController extends Controller
     public function getUser(Request $request)
     {
         try {
-            //code...
-            $users = User::all();
+            // Get students with their course information using eager loading
+            $students = User::with('course')
+                ->where('role', 'student')
+                ->get();
+
+            // Transform the data to include course and department information
+            $transformedStudents = $students->map(function ($student) {
+                return [
+                    'user_id' => $student->user_id,
+                    'name' => $student->name,
+                    'email' => $student->email,
+                    'library_id' => $student->library_id,
+                    'phone_number' => $student->phone_number,
+                    'university_roll_number' => $student->university_roll_number,
+                    'department' => $student->department ?? ($student->course->department ?? 'N/A'),
+                    'course_name' => $student->course->course_name,
+                    'created_at' => $student->created_at,
+                    'updated_at' => $student->updated_at,
+                ];
+            });
+
             return response()->json([
                 'status' => true,
                 'message' => 'Users retrieved successfully',
-                'data' => $users
+                'data' => $transformedStudents
             ], 200);
         } catch (\Throwable $th) {
             return response()->json([
@@ -38,11 +57,11 @@ class userController extends Controller
             $validator = Validator::make($request->all(), [
                 'name' => 'required|string|max:255',
                 'email' => 'required|string|email|max:255|unique:users',
-                'password' => 'nullable|string|min:8', // Made password optional 
+                'password' => 'nullable|string|min:8',
                 'phone_number' => 'nullable|string|max:15',
                 'department' => 'nullable|string|max:100',
                 'university_roll_number' => 'nullable|string|max:50|unique:users',
-                'course_code' => 'nullable|string|exists:courses,course_code',
+                'course_id' => 'nullable|string|exists:courses,course_id',
             ]);
 
             if ($validator->fails()) {
@@ -71,7 +90,7 @@ class userController extends Controller
                 'phone_number' => $request->phone_number,
                 'department' => $request->department,
                 'university_roll_number' => $request->university_roll_number,
-                'course_code' => $request->course_code,
+                'course_id' => $request->course_id,
                 'email_verified_at' => $request->email_verified ? now() : null,
             ]);
 
@@ -120,31 +139,84 @@ class userController extends Controller
         }
     }
 
+    /**
+     * Update existing user (admin function)
+     */
     public function updateUser(Request $request, $id)
     {
         try {
-            //code...
+            // Find the user
             $user = User::find($id);
+            
             if (!$user) {
                 return response()->json([
                     'status' => false,
-                    'message' => 'User not found'
+                    'message' => 'User not found.'
                 ], 404);
             }
-            $user->update($request->all());
+            
+            // Prevent library_id modification
+            if ($request->has('library_id')) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Library ID cannot be modified.'
+                ], 403);
+            }
+            
+            // Validate request
+            $validator = Validator::make($request->all(), [
+                'name' => 'sometimes|required|string|max:255',
+                'email' => 'sometimes|required|email|unique:users,email,'.$id.',user_id',
+                'phone_number' => 'sometimes|required|string|unique:users,phone_number,'.$id.',user_id',
+                'role' => 'sometimes|required|string|in:student,teacher,admin,librarian',
+                'department' => 'sometimes|nullable|string',
+                'course_id' => 'sometimes|nullable|exists:courses,course_id',
+                'university_roll_number' => 'sometimes|nullable|string',
+                'is_active' => 'sometimes|boolean',
+                'password' => 'sometimes|required|string|min:6',
+            ]);
+            
+            if ($validator->fails()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Validation failed.',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+            
+            // Update allowed fields
+            $allowedFields = [
+                'name', 'email', 'phone_number', 'role', 'department', 
+                'course_id', 'university_roll_number', 'is_active'
+            ];
+            
+            foreach ($allowedFields as $field) {
+                if ($request->has($field)) {
+                    $user->{$field} = $request->{$field};
+                }
+            }
+            
+            // Update password if provided
+            if ($request->has('password')) {
+                $user->password = Hash::make($request->password);
+            }
+            
+            $user->save();
+            
             return response()->json([
                 'status' => true,
-                'message' => 'User updated successfully',
+                'message' => 'User updated successfully.',
                 'data' => $user
-            ], 200);
-        } catch (\Throwable $th) {
+            ]);
+        } catch (\Exception $e) {
             return response()->json([
                 'status' => false,
-                'message' => 'Server error',
-                'error' => $th->getMessage()
+                'message' => 'Failed to update user.',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
+
     public function deleteUser($id)
     {
         try {
@@ -175,31 +247,6 @@ class userController extends Controller
         try {
             //code...
             $user = User::find($id);
-            if (!$user) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'User not found'
-                ], 404);
-            }
-            return response()->json([
-                'status' => true,
-                'message' => 'Library card retrieved successfully',
-                'data' => $user
-            ], 200);
-        } catch (\Throwable $th) {
-            return response()->json([
-                'status' => false,
-                'message' => 'Server error',
-                'error' => $th->getMessage()
-            ], 500);
-        }
-    }
-
-    public function issueBooks(Request $request)
-    {
-        try {
-            //code...
-            $user = User::find($request->id);
             if (!$user) {
                 return response()->json([
                     'status' => false,
@@ -321,10 +368,10 @@ class userController extends Controller
             // Validate request
             $request->validate([
                 'book_id' => 'required|exists:books,id',
-                'user_id' => 'required|exists:users,id',
+                'user_id' => 'required|exists:users,user_id',
                 'issue_date' => 'required|date',
                 'due_date' => 'required|date|after_or_equal:issue_date',
-                'issued_by' => 'required|exists:users,id',
+                'issued_by' => 'required|exists:users,user_id',
                 'remarks' => 'nullable|string'
             ]);
 
@@ -340,8 +387,8 @@ class userController extends Controller
 
             // Create new issued book record
             $issuedBook = IssuedBook::create([
-                'book_id' => $request->book_id,
-                'user_id' => $request->user_id,
+                'book_id' => $book->book_id, // Using book_id
+                'user_id' => $request->user_id, // Using user_id
                 'issue_date' => $request->issue_date,
                 'due_date' => $request->due_date,
                 'is_returned' => false,
@@ -456,7 +503,7 @@ class userController extends Controller
                     'message' => 'No books have been issued to this user',
                     'data' => [
                         'user' => [
-                            'id' => $user->id,
+                            'user_id' => $user->user_id,
                             'name' => $user->name,
                             'library_id' => $user->library_id,
                             'email' => $user->email,
@@ -809,6 +856,81 @@ class userController extends Controller
         return response()->json([
             'status' => false,
             'message' => 'Failed to retrieve issued books',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+/**
+ * Update user's own profile
+ */
+public function updateProfile(Request $request)
+{
+    try {
+        // Get authenticated user
+        $user = auth()->user();
+        
+        // Validate request
+        $validator = Validator::make($request->all(), [
+            'email' => 'sometimes|required|email|unique:users,email,'.$user->user_id.',user_id',
+            'phone_number' => 'sometimes|required|string|unique:users,phone_number,'.$user->user_id.',user_id',
+            'name' => 'sometimes|required|string|max:255',
+            'current_password' => 'required_with:new_password',
+            'new_password' => 'sometimes|required|string|min:6|confirmed',
+        ]);
+        
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Validation failed.',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+        
+        // Check current password if trying to change password
+        if ($request->has('new_password')) {
+            if (!Hash::check($request->current_password, $user->password)) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Current password is incorrect.'
+                ], 401);
+            }
+            $user->password = Hash::make($request->new_password);
+        }
+        
+        // Update email if provided
+        if ($request->has('email')) {
+            $user->email = $request->email;
+        }
+        
+        // Update phone number if provided
+        if ($request->has('phone_number')) {
+            $user->phone_number = $request->phone_number;
+        }
+        
+        // Update name if provided
+        if ($request->has('name')) {
+            $user->name = $request->name;
+        }
+        
+        $user->save();
+        
+        return response()->json([
+            'status' => true,
+            'message' => 'Profile updated successfully.',
+            'data' => [
+                'user_id' => $user->user_id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone_number' => $user->phone_number,
+                'library_id' => $user->library_id,
+                'role' => $user->role
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'Failed to update profile.',
             'error' => $e->getMessage()
         ], 500);
     }
