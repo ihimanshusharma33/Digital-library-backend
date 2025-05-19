@@ -291,7 +291,7 @@ class booksContoller extends Controller
     {
         try {
             $request->validate([
-                'type' => 'required|in:isbn,id,title,author',
+                'type' => 'required|in:isbn,book_id,title,author',
                 'value' => 'required|string',
             ]);
             
@@ -304,8 +304,8 @@ class booksContoller extends Controller
                 case 'isbn':
                     $query->where('isbn', $value);
                     break;
-                case 'id':
-                    $query->where('id', $value);
+                case 'book_id':
+                    $query->where('book_id', $value);
                     break;
                 case 'title':
                     $query->where('title', 'like', '%' . $value . '%');
@@ -315,7 +315,6 @@ class booksContoller extends Controller
                     break;
             }
             
-            // Get the books
             $books = $query->get();
             
             if ($books->isEmpty()) {
@@ -325,30 +324,26 @@ class booksContoller extends Controller
                 ], 404);
             }
             
-            // Check availability for each book
             $booksWithAvailability = $books->map(function($book) {
-                // A book is available if it's not currently issued or if all issued copies are returned
-                $isAvailable = !IssuedBook::where('book_id', $book->id)
+                $isAvailable = !IssuedBook::where('book_id', $book->book_id)
                     ->where('is_returned', false)
                     ->exists();
                 
                 $data = [
-                    'id' => $book->id,
+                    'book_id' => $book->book_id, // <-- FIXED HERE
                     'title' => $book->title,
                     'author' => $book->author,
                     'isbn' => $book->isbn,
                     'is_available' => $isAvailable,
                 ];
                 
-                // If book is available, include more details
                 if ($isAvailable) {
                     $data = array_merge($data, [
                         'publisher' => $book->publisher,
                         'publication_year' => $book->publication_year,
-                        'edition' => $book->edition,
+                        'edition' => $book->edition ?? null,
                         'category' => $book->category,
                         'description' => $book->description,
-                        // Add any other book attributes you want to include
                     ]);
                 }
                 
@@ -383,13 +378,13 @@ class booksContoller extends Controller
         try {
             // Validate request
             $request->validate([
-                'issued_book_id' => 'required|exists:issued_books,id',
+                'issue_id' => 'required|exists:issued_books,issue_id',
                 'return_date' => 'required|date',
                 'remarks' => 'nullable|string'
             ]);
 
             // Find the issued book record
-            $issuedBook = IssuedBook::find($request->issued_book_id);
+            $issuedBook = IssuedBook::find($request->issue_id);
             
             if (!$issuedBook) {
                 return response()->json([

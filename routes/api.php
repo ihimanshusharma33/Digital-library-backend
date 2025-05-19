@@ -15,8 +15,8 @@ use App\Http\Controllers\AuthController;
 // Public routes
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/signup', [AuthController::class, 'signup'])->name('signup');
-Route::get('/books', [booksContoller::class, 'getBooks']); 
-Route::get('/books/availability', [booksContoller::class, 'checkAvailability']); 
+Route::get('/books', [booksContoller::class, 'getBooks']);
+Route::get('/books/availability', [booksContoller::class, 'checkAvailability']);
 Route::get('/resources', [ResourceController::class, 'getResources']);
 Route::get('/statistics', [StatisticsController::class, 'getStatistics']);
 Route::get('/course', [courseContoller::class, 'getCourse']); // Public course listing
@@ -32,14 +32,19 @@ Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 
 // Routes for any authenticated user
 
+
 Route::middleware('jwt.auth')->group(function () {
     // User profile and personal data
-    Route::get('/user/{id}', [userController::class, 'getUserById'])->middleware('jwt.verify.self'); // Only see own or admin
+    Route::get('/user/{user_id}', [userController::class, 'getUserById'])->middleware('jwt.verify.self'); // Only see own or admin
     Route::get('libraryCard/{id}', [userController::class, 'getLibraryCard'])->middleware('jwt.verify.self');
     Route::get('/issued-books', [userController::class, 'getUserIssuedBooks']);
+    Route::get('/user/{user_id}/resources', [ResourceController::class, 'getUserResources']);
     Route::get('/issued-booksbyId/{id}', [UserController::class, 'getUserIssuedBooksbyID']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/profile/update', [userController::class, 'updateProfile']);
+    Route::post('/notes', [NotesController::class, 'addNotes']);
+    Route::post('/oldquestion', [questionPaperContoller::class, 'addOldQuestion']);
+    Route::post('/ebooks', [EBooksController::class, 'addEBook']);
 });
 
 // Routes for staff and admin
@@ -53,27 +58,27 @@ Route::middleware('jwt.staff')->group(function () {
     // Book lending operations
     Route::post('/issue-book', [userController::class, 'issueBook']);
     Route::post('/return-book', [booksContoller::class, 'returnBook']);
-    
+
     // Book management
-    Route::post('/books', [booksContoller::class, 'addBooks']);
     Route::put('/books/{id}', [booksContoller::class, 'updateBooks']);
-    
+    Route::post('/books', [booksContoller::class, 'addBooks']);
+
     // Course management
     Route::post('/course', [courseContoller::class, 'addCourse']);
     Route::put('/course/{id}', [courseContoller::class, 'updateCourse']);
-    
+
     // Notes management
-    Route::post('/notes', [NotesController::class, 'addNotes']);
+
     Route::put('/notes/{id}', [NotesController::class, 'updateNotes']);
-    
+
     // Question papers management
-    Route::post('/oldquestion', [questionPaperContoller::class, 'addOldQuestion']);
+
     Route::put('/oldquestion/{id}', [questionPaperContoller::class, 'updateQuestionPaper']);
-    
+
     // E-Books management
-    Route::post('/ebooks', [EBooksController::class, 'addEBook']);
+
     Route::put('/ebooks/{id}', [EBooksController::class, 'updateEBook']);
-    
+
     // Notifications management
     Route::prefix('notices')->group(function () {
         Route::post('/', [NotificationController::class, 'store']);

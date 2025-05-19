@@ -26,7 +26,6 @@ class RunMigrationsInOrder extends Command
      */
     public function handle()
     {
-        
         Artisan::call('migrate --path=database/migrations/2025_05_12_120933_create_courses_table.php');
         Artisan::call('migrate --path=database/migrations/0001_01_01_000000_create_users_table.php');
         Artisan::call('migrate --path=database/migrations/0001_01_01_000001_create_cache_table.php');
@@ -37,6 +36,6 @@ class RunMigrationsInOrder extends Command
         Artisan::call('migrate --path=database/migrations/2025_05_12_120442_create_question_papers_table.php');
         Artisan::call('migrate --path=database/migrations/2025_05_12_120457_create_notifications_table.php');
         Artisan::call('migrate --path=database/migrations/2025_05_12_120518_create_issued_books_table.php');    
-
+        Artisan::call('migrate --path=database/migrations/2025_05_18_081751_create_password_reset_otps_table.php');    
     }
 }

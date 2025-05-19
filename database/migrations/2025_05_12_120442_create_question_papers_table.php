@@ -16,6 +16,7 @@ return new class extends Migration
             $table->string('title');
             $table->string('subject');
             $table->year('year');
+            $table->string('author')->nullable();
             $table->enum('exam_type', ['midterm', 'final', 'supplementary', 'other'])->default('other');
             $table->string('file_path')->nullable();
             $table->unsignedBigInteger('course_id')->nullable();

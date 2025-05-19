@@ -131,4 +131,35 @@ class ResourceController extends Controller
 
         return $query->get();
     }
+
+    /**
+     * Get resources uploaded or authored by a specific user
+     *
+     * @param string $user_id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getUserResources($user_id)
+    {
+        try {
+            $ebooks = EBook::where('author', $user_id)->get();
+            $notes = Note::where('author', $user_id)->get();
+            $questionPapers = QuestionPaper::where('author', $user_id)->get();
+
+            return response()->json([
+                'status' => true,
+                'message' => 'User resources retrieved successfully',
+                'data' => [
+                    'ebooks' => $ebooks,
+                    'notes' => $notes,
+                    'question_papers' => $questionPapers
+                ]
+            ], 200);
+        } catch (\Throwable $th) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Server error',
+                'error' => $th->getMessage()
+            ], 500);
+        }
+    }
 }

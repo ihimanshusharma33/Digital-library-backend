@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Course;
 use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\IssuedBook;
@@ -125,6 +126,17 @@ class userController extends Controller
                     'message' => 'User not found'
                 ], 404);
             }
+
+            if(  $user->course_id){
+                // get course name
+                $course=Course::find($user->course_id);
+            }
+
+            // add course name and department  to user
+
+            $user->course_name = $course->course_name ?? 'N/A';
+            $user->department = $user->department ?? ($course->department ?? 'N/A');
+
             return response()->json([
                 'status' => true,
                 'message' => 'User retrieved successfully',
@@ -367,7 +379,7 @@ class userController extends Controller
         try {
             // Validate request
             $request->validate([
-                'book_id' => 'required|exists:books,id',
+                'book_id' => 'required|exists:books,book_id',
                 'user_id' => 'required|exists:users,user_id',
                 'issue_date' => 'required|date',
                 'due_date' => 'required|date|after_or_equal:issue_date',
@@ -492,7 +504,7 @@ class userController extends Controller
 
             // Get all books issued to this user
             $issuedBooks = IssuedBook::with('book')
-                ->where('user_id', $user->id)
+                ->where('user_id', $user->user_id)
                 ->orderBy('is_returned', 'asc')
                 ->orderBy('due_date', 'asc')
                 ->get();
@@ -540,7 +552,7 @@ class userController extends Controller
                 }
 
                 return [
-                    'id' => $issuedBook->id,
+                    'issue_id' => $issuedBook->issue_id,
                     'book_id' => $issuedBook->book_id,
                     'book_title' => $issuedBook->book->title ?? 'Unknown Title',
                     'book_author' => $issuedBook->book->author ?? 'Unknown Author',
@@ -773,7 +785,7 @@ class userController extends Controller
         }
 
         $issuedBooks = IssuedBook::with('book')
-            ->where('user_id', $user->id)
+            ->where('user_id', $user->user_id)
             ->orderBy('is_returned', 'asc')
             ->orderBy('due_date', 'asc')
             ->get();
@@ -784,7 +796,7 @@ class userController extends Controller
                 'message' => 'No books have been issued to this user',
                 'data' => [
                     'user' => [
-                        'id' => $user->id,
+                        'user_id' => $user->iuser_d,
                         'name' => $user->name,
                         'library_id' => $user->library_id,
                         'email' => $user->email,

@@ -18,12 +18,13 @@ class JwtVerifySelf
     {
         try {
             $user = JWTAuth::parseToken()->authenticate();
+
             
             
             // Check if user is requesting their own data or if they're staff
-            $requestedId = $request->route('id');
+            $requestedId = $request->route('user_id');
             
-            if ($user->id != $requestedId && !in_array($user->role, ['admin', 'staff', 'librarian'])) {
+            if ($user->user_id != $requestedId && !in_array($user->role, ['admin', 'librarian'])) {
                 return response()->json([
                     'status' => false,
                     'message' => 'Unauthorized. You can only access your own information.'
